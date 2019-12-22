@@ -187,8 +187,8 @@ for y in range(9):
         tiles.add(sprite)
 
 player_green = Player(load_image('tank_green.png'), 138, 16)
-player_reen = Player(load_image('tank_green.png'), 138, 16)
-players.add(player_green, player_reen)
+player_sand = Player(load_image('tank_sand.png'), 138, 16)
+players.add(player_green, player_sand)
 
 running = True
 while running:
@@ -197,7 +197,6 @@ while running:
             running = False
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_w:
-
                 player_green.moving_down = False
                 player_green.moving_left = False
                 player_green.moving_right = False
@@ -207,7 +206,6 @@ while running:
                 player_green.moving_top = True
 
             if event.key == pygame.K_s:
-
                 player_green.moving_up = False
                 player_green.moving_left = False
                 player_green.moving_right = False
@@ -217,7 +215,6 @@ while running:
                 player_green.moving_down = True
 
             if event.key == pygame.K_d:
-
                 player_green.moving_down = False
                 player_green.moving_left = False
                 player_green.moving_top = False
@@ -251,9 +248,68 @@ while running:
                     green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x + 42,
                                      player_green.rect.y + 18)
                     green_b.rotation(90)
-
                 green_b.direction = player_green.direction
+
                 bullets.add(green_b)
+
+            # второй игрок
+
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    player_sand.moving_down = False
+                    player_sand.moving_left = False
+                    player_sand.moving_right = False
+
+                    player_sand.rotation(player_sand.direction - north)
+                    player_sand.direction = north
+                    player_sand.moving_top = True
+
+                if event.key == pygame.K_DOWN:
+                    player_sand.moving_up = False
+                    player_sand.moving_left = False
+                    player_sand.moving_right = False
+
+                    player_sand.rotation(player_sand.direction - south)
+                    player_sand.direction = south
+                    player_sand.moving_down = True
+
+                if event.key == pygame.K_RIGHT:
+                    player_sand.moving_down = False
+                    player_sand.moving_left = False
+                    player_sand.moving_top = False
+
+                    player_sand.rotation(player_sand.direction - west)
+                    player_sand.direction = west
+                    player_sand.moving_right = True
+
+                if event.key == pygame.K_LEFT:
+
+                    player_sand.moving_down = False
+                    player_sand.moving_top = False
+                    player_sand.moving_right = False
+
+                    player_sand.rotation(player_sand.direction - east)
+                    player_sand.direction = east
+                    player_sand.moving_left = True
+
+                elif event.key == pygame.K_RCTRL:
+                    if player_sand.direction == south:
+                        sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 18,
+                                        player_sand.rect.y + 46)
+                    elif player_sand.direction == north:
+                        sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 18,
+                                        player_sand.rect.y - 23)
+                    elif player_sand.direction == east:
+                        sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x - 23,
+                                        player_sand.rect.y + 18)
+                        sand_b.rotation(-90)
+                    elif player_sand.direction == west:
+                        sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 42,
+                                        player_sand.rect.y + 18)
+                        sand_b.rotation(90)
+                    sand_b.direction = player_sand.direction
+
+                    bullets.add(sand_b)
 
         elif event.type == pygame.KEYUP:
             if event.key == pygame.K_w:
@@ -267,6 +323,20 @@ while running:
 
             elif event.key == pygame.K_a:
                 player_green.moving_left = False
+
+            # игрок 2
+
+            if event.key == pygame.K_UP:
+                player_sand.moving_top = False
+
+            elif event.key == pygame.K_DOWN:
+                player_sand.moving_down = False
+
+            elif event.key == pygame.K_RIGHT:
+                player_sand.moving_right = False
+
+            elif event.key == pygame.K_LEFT:
+                player_sand.moving_left = False
 
     tiles.draw(screen)
     tiles.update()
