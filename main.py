@@ -8,6 +8,8 @@ south = 0
 east = 90
 north = 180
 west = 270
+green_destroyed = False
+sand_destroyed = False
 
 
 def load_image(name, colorkey=None):
@@ -28,8 +30,17 @@ class Tile(pygame.sprite.Sprite):
         self.rect = img.get_rect()
         screen = pygame.display.get_surface()
         self.area = screen.get_rect()
-        self.x = x
-        self.y = y
+        self.rect.x = x
+        self.rect.y = y
+
+
+class Object(pygame.sprite.Sprite):
+    def __init__(self, img, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = img.get_rect()
+        screen = pygame.display.get_surface()
+        self.area = screen.get_rect()
         self.rect.x = x
         self.rect.y = y
 
@@ -41,12 +52,10 @@ class Particle(pygame.sprite.Sprite):
         self.rect = img.get_rect()
         screen = pygame.display.get_surface()
         self.area = screen.get_rect()
-        self.x = x
-        self.y = y
         self.rect.x = x
         self.rect.y = y
         self.hitanimcount = 0
-        self.shotanimcount = 0
+        self.explosionanimcount = 0
         self.images = []
         self.tank = tank
         self.type = type
@@ -57,7 +66,7 @@ class Particle(pygame.sprite.Sprite):
     def update(self):
         if self.type == 'hit':
             self.hitanimcount += 1
-            self.image = self.images[self.hitanimcount // 6]
+            self.image = self.images[self.hitanimcount // 8]
             self.image = pygame.transform.scale(self.image, (30, 30))
             if self.tank.direction == north or self.tank.direction == south:
                 self.rect.x = self.tank.rect.x + 9
@@ -65,11 +74,14 @@ class Particle(pygame.sprite.Sprite):
             else:
                 self.rect.x = self.tank.rect.x + 12
                 self.rect.y = self.tank.rect.y + 9
-            if self.hitanimcount == 29:
+            if self.hitanimcount == 63:
                 self.kill()
-        elif self.type == 'shot':
-            self.shotanimcount += 1
-            if self.shotanimcount == 10:
+        elif self.type == 'explosion':
+            self.explosionanimcount += 1
+            self.image = pygame.transform.scale(self.images[self.explosionanimcount // 9], (83, 80))
+            self.rect.x = self.tank.rect.x - 15
+            self.rect.y = self.tank.rect.y - 15
+            if self.explosionanimcount == 62:
                 self.kill()
 
 
@@ -111,6 +123,19 @@ class Player(pygame.sprite.Sprite):
             self.rect.x += 1
         if self.moving_left and self.rect.x != 0:
             self.rect.x -= 1
+        if self.health <= 0:
+            self.get_destroyed()
+
+    def get_destroyed(self):
+        explosion = Particle(pygame.transform.scale(load_image('explosion00.png', -1), (1, 1)),
+                             self.rect.x, self.rect.y, self, 'explosion')
+        explosion.images = [load_image('explosion00.png', -1), load_image('explosion01.png', -1),
+                            load_image('explosion02.png', -1), load_image('explosion03.png', -1),
+                            load_image('explosion04.png', -1), load_image('explosion05.png', -1),
+                            load_image('explosion06.png', -1), load_image('explosion07.png', -1),
+                            load_image('explosion08.png', -1)]
+        particles.add(explosion)
+        self.kill()
 
 
 class Bullet(pygame.sprite.Sprite):
@@ -143,13 +168,15 @@ class Bullet(pygame.sprite.Sprite):
         if 768 < self.rect.x < 0 or 576 < self.rect.y < 0:
             self.kill()
         if pygame.sprite.spritecollideany(self, players):
-            hit = Particle(pygame.transform.scale(load_image('explosion1.png', -1), (1, 1)), self.x, self.y,
+            hit = Particle(pygame.transform.scale(load_image('flash00.png', -1), (1, 1)), self.x, self.y,
                            pygame.sprite.spritecollideany(self, players), 'hit')
-            images = [load_image('smokeOrange0.png', -1), load_image('smokeOrange1.png', -1),
-                      load_image('smokeOrange2.png', -1), load_image('smokeOrange3.png', -1),
-                      load_image('smokeOrange4.png', -1)]
+            images = [load_image('flash00.png', -1), load_image('flash01.png', -1),
+                      load_image('flash02.png', -1), load_image('flash03.png', -1),
+                      load_image('flash04.png', -1), load_image('flash05.png', -1), load_image('flash06.png', -1),
+                      load_image('flash07.png', -1), load_image('flash08.png', -1)]
             hit.images = images
             particles.add(hit)
+            pygame.sprite.spritecollideany(self, players).health -= self.damage
             self.kill()
 
 
@@ -187,8 +214,11 @@ for y in range(9):
         tiles.add(sprite)
 
 player_green = Player(load_image('tank_green.png'), 138, 16)
-player_sand = Player(load_image('tank_sand.png'), 138, 16)
+player_sand = Player(load_image('tank_sand.png'), 720, 394)
+player_sand.rotation(-90)
+player_sand.direction = east
 players.add(player_green, player_sand)
+
 
 running = True
 while running:
