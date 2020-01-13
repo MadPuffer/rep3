@@ -3,18 +3,28 @@ import random
 import pygame
 
 pygame.init()
-screen = pygame.display.set_mode((768, 576))
+screen = pygame.display.set_mode((768, 630))
 clock = pygame.time.Clock()
 
+# Bulat: переменные для корректного поворота спрайтов
 south = 0
 east = 90
 north = 180
 west = 270
+
+# Bulat: танки, уничтоженные в данный момент
 destroyed_player = []
+
+# Bulat: переменные времени для респауна каждого из игроков
 respawn_green_tick = 0
 respawn_sand_tick = 0
 
+# Bulat: музыка
+pygame.mixer.music.load('music.wav')
+pygame.mixer.music.play(-1)
 
+
+# Bulat: функция загрузки изображений
 def load_image(name, colorkey=None):
     image = pygame.image.load(f'sprites/{name}').convert()
     if colorkey is not None:
@@ -26,19 +36,44 @@ def load_image(name, colorkey=None):
     return image
 
 
+# Bulat: функция генерации объектов
+def create_objects():
+    objects.add(Object(load_image('crateMetal.png', -1), 448, 256))
+
+
+# Bulat: класс интерфейса
+class UI(pygame.sprite.Sprite):
+    def __init__(self, img, x, y, type, tank):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = img.get_rect()
+        self.area = screen.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.type = type
+        self.tank = tank
+
+    def update(self, *args):
+        if self.type == 'HPBar':
+            self.image = pygame.transform.scale(self.image, (int(376 * (self.tank.health / 120)), 47))
+        elif self.type == 'ArmorBar':
+            self.image = pygame.transform.scale(self.image, (int(377 * (self.tank.armor / 80)), 14))
+
+
+# Bulat: класс поля
 class Tile(pygame.sprite.Sprite):
     def __init__(self, img, x, y):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.rect = img.get_rect()
-        screen = pygame.display.get_surface()
         self.area = screen.get_rect()
         self.rect.x = x
         self.rect.y = y
 
 
+# Bulat: класс объектов
 class Object(pygame.sprite.Sprite):
-    def __init__(self, img, x, y, for_time, *living_time):
+    def __init__(self, img, x, y, for_time=False, living_time=600, destroyable=False):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.rect = img.get_rect()
@@ -47,8 +82,9 @@ class Object(pygame.sprite.Sprite):
         self.rect.x = x
         self.rect.y = y
         self.for_time = for_time
-        self.living_time = living_time[0]
+        self.living_time = living_time
         self.tick = 0
+        self.destroyable = destroyable
 
     def update(self):
         if self.for_time:
@@ -57,6 +93,7 @@ class Object(pygame.sprite.Sprite):
                 self.kill()
 
 
+# Bulat: эффекты
 class Particle(pygame.sprite.Sprite):
     def __init__(self, img, x, y, tank, type):
         pygame.sprite.Sprite.__init__(self)
@@ -122,12 +159,12 @@ class Particle(pygame.sprite.Sprite):
                 self.rotation(90)
 
 
+# Bulat: игроки
 class Player(pygame.sprite.Sprite):
     def __init__(self, img, x, y, color):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.rect = img.get_rect()
-        screen = pygame.display.get_surface()
         self.area = screen.get_rect()
         self.color = color
         self.x = x
@@ -136,26 +173,27 @@ class Player(pygame.sprite.Sprite):
         self.rect.y = y
 
         self.health = 120
+        self.armor = 80
         self.speed = 1
         self.reload = 0
         self.reloading = False
         self.can_shoot = True
+        self.resist_count = 0
+        self.resist = True
 
-        self.south = 0
-        self.east = 90
-        self.north = 180
-        self.west = 270
-        self.direction = self.south
+        self.direction = south
 
         self.moving_left = False
         self.moving_right = False
         self.moving_top = False
         self.moving_down = False
 
+    # Bulat: функция поворота
     def rotation(self, angle):
         self.image = pygame.transform.rotate(self.image, angle)
 
     def update(self):
+
         if self.moving_top and self.rect.y != 0:
             self.rect.y -= self.speed
         if self.moving_down and self.rect.y != 576:
@@ -164,15 +202,36 @@ class Player(pygame.sprite.Sprite):
             self.rect.x += 1
         if self.moving_left and self.rect.x != 0:
             self.rect.x -= 1
+
+        if pygame.sprite.spritecollideany(self, objects):
+            if self.direction == north:
+                self.moving_top = False
+            elif self.direction == south:
+                self.moving_down = False
+            elif self.direction == west:
+                self.moving_right = False
+            elif self.direction == east:
+                self.moving_left = False
+
         if self.health <= 0:
             self.get_destroyed()
+
         if self.reloading:
             self.reload += 1
-            if self.reload == 45:
-                self.reload = 0
-                self.can_shoot = True
-                self.reloading = False
 
+        # Bulat: откат перезарядки
+        if self.reload == 45:
+            self.reload = 0
+            self.can_shoot = True
+            self.reloading = False
+
+        # Bulat: бессмертие в первые 3 секунды после появления
+        if self.resist_count < 180:
+            self.resist_count += 1
+        else:
+            self.resist = False
+
+    # Bulat: функция уничтожения
     def get_destroyed(self):
         explosion = Particle(pygame.transform.scale(load_image('Explosion_A.png', -1), (1, 1)),
                              self.rect.x, self.rect.y, self, 'explosion')
@@ -184,18 +243,20 @@ class Player(pygame.sprite.Sprite):
         particles.add(explosion)
         global destroyed_player
         destroyed_player.append(self.color)
-        body = Object(load_image('tankBody_dark_outline.png'), self.rect.x, self.rect.y, True, 600)
+        body = Object(load_image('tankBody_dark_outline.png'), self.rect.x, self.rect.y,
+                      for_time=True, destroyable=False)
         global objects
         objects.add(body)
+        ui.remove(i for i in ui if i.tank == self)
         self.kill()
 
 
+# Bulat: класс снарядов
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, img, x, y):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.rect = img.get_rect()
-        screen = pygame.display.get_surface()
         self.area = screen.get_rect()
         self.x = x
         self.y = y
@@ -205,6 +266,7 @@ class Bullet(pygame.sprite.Sprite):
         self.speed = 10
         self.direction = ''
 
+    # Bulat: функция поворота
     def rotation(self, angle):
         self.image = pygame.transform.rotate(self.image, angle)
 
@@ -217,18 +279,28 @@ class Bullet(pygame.sprite.Sprite):
             self.rect.x -= self.speed
         elif self.direction == west:
             self.rect.x += self.speed
-        if 768 < self.rect.x < 0 or 576 < self.rect.y < 0:
+        if self.rect.x > 770 or self.rect.x < 0 or self.rect.y > 580 or self.rect.y < 0:
             self.kill()
+
+        # Bulat: проверка на столкновение с игроком
         if pygame.sprite.spritecollideany(self, players):
+            # Bulat: танк, в который угодил снаряд
+            hitted_tank = pygame.sprite.spritecollideany(self, players)
+            # Bulat: создание эффекта
             hit = Particle(pygame.transform.scale(load_image('flash00.png', -1), (1, 1)), self.x, self.y,
-                           pygame.sprite.spritecollideany(self, players), 'hit')
+                           hitted_tank, 'hit')
             images = [load_image('flash00.png', -1), load_image('flash01.png', -1),
                       load_image('flash02.png', -1), load_image('flash03.png', -1),
                       load_image('flash04.png', -1), load_image('flash05.png', -1), load_image('flash06.png', -1),
                       load_image('flash07.png', -1), load_image('flash08.png', -1)]
             hit.images = images
             particles.add(hit)
-            pygame.sprite.spritecollideany(self, players).health -= self.damage
+            # Bulat: нанесение урона танку
+            hitted_tank.health -= self.damage * 0.4 if hitted_tank.resist is False else 0
+            hitted_tank.armor -= self.damage * 0.6 if hitted_tank.resist is False else 0
+            if hitted_tank.armor < 0:
+                hitted_tank.health += hitted_tank.armor
+                hitted_tank.armor = 0
             self.kill()
 
 
@@ -242,7 +314,7 @@ class Bonus(pygame.sprite.Sprite):
         self.x = random.randrange(x)
         self.y = random.randrange(y)
         self.images = ["barrelRed_top.png", "barrelRed_top.png",
-                  "barrelGreen_top.png"]
+                       "barrelGreen_top.png"]
         bs = ['bulletBlue2.png', 'bulletRed1_outline.png', 'bulletDark2_outline.png']
         self.image = pygame.transform.scale(load_image(random.choice(self.images), -1), (1, 1))
         self.rect = self.image.get_rect()
@@ -265,6 +337,7 @@ class Bonus(pygame.sprite.Sprite):
             self.kill()
 
 
+# Bulat: изображения для составления поля
 tile_images = {'.': load_image('tileGrass1.png'),
                ',': load_image('tileGrass_roadEast.png'),
                '@': load_image('tileGrass_roadCornerUL.png'),
@@ -285,31 +358,50 @@ tile_images = {'.': load_image('tileGrass1.png'),
                '+': load_image('tileSand_roadSplitN.png')
                }
 
+# Bulat: все группы спрайтов
 tiles = pygame.sprite.Group()
 players = pygame.sprite.Group()
 particles = pygame.sprite.Group()
 bullets = pygame.sprite.Group()
 objects = pygame.sprite.Group()
+ui = pygame.sprite.Group()
 
+# Bulat: создание объектов
+create_objects()
+
+# Bulat: построение уровня
 level_blueprint = [i.strip() for i in list(open('level.txt', 'r'))]
-for y in range(9):
+for y in range(10):
     for x in range(12):
         tile = level_blueprint[y][x]
         sprite = Tile(tile_images[tile], x * 64, y * 64)
         tiles.add(sprite)
 
+# Bulat: создание интерфейса и игроков
+ui.add(UI(load_image('HPBar.jpg'), 0, 576, 'HPBarOut', None))
+ui.add(UI(load_image('HPBar.jpg'), 388, 576, 'HPBarOut', None))
+
 player_green = Player(load_image('tank_green.png'), 138, 16, 'green')
+ui.add(UI(load_image('HPBarIn.png', -1), 2, 577, 'HPBar', player_green))
+ui.add(UI(pygame.transform.scale(load_image('ArmorBar.png'), (377, 14)), 2, 560, 'ArmorBar', player_green))
+
 player_sand = Player(load_image('tank_sand.png'), 720, 394, 'sand')
+ui.add(UI(load_image('HPBarIn.png', -1), 390, 577, 'HPBar', player_sand))
+ui.add(UI(pygame.transform.scale(load_image('ArmorBar.png'), (377, 14)), 390, 560, 'ArmorBar', player_sand))
 player_sand.rotation(-90)
 player_sand.direction = east
+
 players.add(player_green, player_sand)
 
+# Bulat: главный цикл игры
 running = True
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
         elif event.type == pygame.KEYDOWN:
+            # Bulat: вверх
             if event.key == pygame.K_w:
                 player_green.moving_down = False
                 player_green.moving_left = False
@@ -319,6 +411,7 @@ while running:
                 player_green.direction = north
                 player_green.moving_top = True
 
+            # Bulat: вниз
             if event.key == pygame.K_s:
                 player_green.moving_up = False
                 player_green.moving_left = False
@@ -328,6 +421,7 @@ while running:
                 player_green.direction = south
                 player_green.moving_down = True
 
+            # Bulat: вправо
             if event.key == pygame.K_d:
                 player_green.moving_down = False
                 player_green.moving_left = False
@@ -337,6 +431,7 @@ while running:
                 player_green.direction = west
                 player_green.moving_right = True
 
+            # Bulat: влево
             if event.key == pygame.K_a:
 
                 player_green.moving_down = False
@@ -347,7 +442,9 @@ while running:
                 player_green.direction = east
                 player_green.moving_left = True
 
+            # Bulat: выстрел
             elif event.key == pygame.K_SPACE and player_green.can_shoot:
+                # Bulat: изображения для эффекта
                 images = [load_image('Flash_A_01.png', -1), load_image('Flash_A_02.png', -1),
                           load_image('Flash_A_03.png', -1),
                           load_image('Flash_A_04.png', -1), load_image('Flash_A_05.png', -1)]
@@ -507,6 +604,8 @@ while running:
 
             elif event.key == pygame.K_LEFT:
                 player_sand.moving_left = False
+
+    # Bulat: отрисовка всех групп спрайтов
     tiles.draw(screen)
     tiles.update()
     players.draw(screen)
@@ -517,7 +616,10 @@ while running:
     bullets.update()
     particles.draw(screen)
     particles.update()
+    ui.draw(screen)
+    ui.update()
 
+    # Bulat:  возрождение уничтоженного игрока/игроков
     if destroyed_player:
         if 'green' in destroyed_player:
             respawn_green_tick += 1
@@ -526,6 +628,10 @@ while running:
                 players.add(player_green)
                 destroyed_player.remove('green')
                 respawn_green_tick = 0
+                ui.add(UI(load_image('HPBarIn.png', -1), 2, 577, 'HPBar', player_green))
+                ui.add(UI(pygame.transform.scale(load_image('ArmorBar.png'), (377, 14)), 2, 560,
+                          'ArmorBar', player_green))
+
         if 'sand' in destroyed_player:
             respawn_sand_tick += 1
             if respawn_sand_tick == 120:
@@ -535,6 +641,9 @@ while running:
                 players.add(player_sand)
                 destroyed_player.remove('sand')
                 respawn_sand_tick = 0
+                ui.add(UI(load_image('HPBarIn.png', -1), 390, 577, 'HPBar', player_sand))
+                ui.add(UI(pygame.transform.scale(load_image('ArmorBar.png'), (377, 14)), 390, 560,
+                          'ArmorBar', player_green))
 
     pygame.display.flip()
     clock.tick(60)
