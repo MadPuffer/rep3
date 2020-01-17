@@ -1,10 +1,29 @@
 import random
-
+from random import choice
 import pygame
+import sys
+import os
+
+# Ryslan: Счетчик для спавна бонусов . Что бы спавнилось через 10 сек
+a = 10000
+pygame.time.set_timer(pygame.USEREVENT, a)
 
 pygame.init()
 screen = pygame.display.set_mode((768, 630))
+width, heigth = 768, 630
 clock = pygame.time.Clock()
+
+if a == 10000:
+    a = 0
+
+# Ryslan: Главный и основной флаг
+bigflag = False
+
+# Ryslan: Счетчик для старта игры
+digitalflag = 0
+
+# Ryslan: Счетчик спавна бонусов . Что бы спавнилось только 4 штуки
+count = 0
 
 # Bulat: переменные для корректного поворота спрайтов
 south = 0
@@ -17,7 +36,10 @@ destroyed_player = []
 
 # Bulat: переменные времени для респауна каждого из игроков
 respawn_green_tick = 0
+green_lives = 3
+
 respawn_sand_tick = 0
+sand_lives = 3
 
 # Bulat: музыка
 pygame.mixer.music.load('music.wav')
@@ -38,7 +60,23 @@ def load_image(name, colorkey=None):
 
 # Bulat: функция генерации объектов
 def create_objects():
-    objects.add(Object(load_image('crateMetal.png', -1), 448, 256))
+    objects.add(Object(pygame.transform.scale(load_image('leafes.png', -1), (50, 50)), 100, 250))
+    objects.add(Object(pygame.transform.scale(load_image('leafes.png', -1), (50, 50)), 350, 500))
+    objects.add(Object(pygame.transform.scale(load_image('leafes.png', -1), (50, 50)), 50, 400))
+    objects.add(Object(pygame.transform.scale(load_image('leafes.png', -1), (50, 50)), 250, 60))
+    objects.add(Object(pygame.transform.scale(load_image('leafes.png', -1), (50, 50)), 20, 50))
+    objects.add(Object(pygame.transform.scale(load_image('leafes.png', -1), (50, 50)), 270, 220))
+
+
+# Bulat: отображение кол-ва жизней
+def update_lives(gr, snd, scr):
+    font = pygame.font.Font('fonts/Kenney High Square.ttf', 60)
+
+    textsurface = font.render(f'{str(gr)}', False, (59, 49, 49))
+    scr.blit(textsurface, (55, 5))
+
+    textsurface = font.render(f'{str(snd)}', False, (59, 49, 49))
+    scr.blit(textsurface, (740, 5))
 
 
 # Bulat: класс интерфейса
@@ -55,7 +93,7 @@ class UI(pygame.sprite.Sprite):
 
     def update(self, *args):
         if self.type == 'HPBar':
-            self.image = pygame.transform.scale(self.image, (int(376 * (self.tank.health / 120)), 47))
+            self.image = pygame.transform.scale(self.image, (abs(int(376 * (self.tank.health / 120))), 47))
         elif self.type == 'ArmorBar':
             self.image = pygame.transform.scale(self.image, (int(377 * (self.tank.armor / 80)), 14))
 
@@ -73,7 +111,7 @@ class Tile(pygame.sprite.Sprite):
 
 # Bulat: класс объектов
 class Object(pygame.sprite.Sprite):
-    def __init__(self, img, x, y, for_time=False, living_time=600, destroyable=False):
+    def __init__(self, img, x, y, for_time=False, living_time=600, collision=False):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.rect = img.get_rect()
@@ -84,7 +122,7 @@ class Object(pygame.sprite.Sprite):
         self.for_time = for_time
         self.living_time = living_time
         self.tick = 0
-        self.destroyable = destroyable
+        self.collision = collision
 
     def update(self):
         if self.for_time:
@@ -194,16 +232,19 @@ class Player(pygame.sprite.Sprite):
 
     def update(self):
 
+        # Bulat: объект столкновения
+        collid_obj = pygame.sprite.spritecollideany(self, objects)
+
         if self.moving_top and self.rect.y != 0:
             self.rect.y -= self.speed
         if self.moving_down and self.rect.y != 576:
             self.rect.y += self.speed
         if self.moving_right and self.rect.x != 768:
-            self.rect.x += 1
+            self.rect.x += self.speed
         if self.moving_left and self.rect.x != 0:
-            self.rect.x -= 1
+            self.rect.x -= self.speed
 
-        if pygame.sprite.spritecollideany(self, objects):
+        if collid_obj and collid_obj.collision:
             if self.direction == north:
                 self.moving_top = False
             elif self.direction == south:
@@ -244,10 +285,15 @@ class Player(pygame.sprite.Sprite):
         global destroyed_player
         destroyed_player.append(self.color)
         body = Object(load_image('tankBody_dark_outline.png'), self.rect.x, self.rect.y,
-                      for_time=True, destroyable=False)
+                      for_time=True, collision=True)
         global objects
         objects.add(body)
-        ui.remove(i for i in ui if i.tank == self)
+        ui.remove(i for i in ui if i.tank == self and i.type != 'Heart')
+        global green_lives, sand_lives
+        if self.color == 'green':
+            green_lives -= 1
+        else:
+            sand_lives -= 1
         self.kill()
 
 
@@ -304,37 +350,246 @@ class Bullet(pygame.sprite.Sprite):
             self.kill()
 
 
+# Ryslan: Класс бонусов
 class Bonus(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
         super().__init__()
-        self.count = 0
-        x = 762
-        y = 573
-        self.x = random.randrange(x)
-        self.y = random.randrange(y)
-        self.images = ["barrelRed_top.png", "barrelRed_top.png",
-                       "barrelGreen_top.png"]
-        bs = ['bulletBlue2.png', 'bulletRed1_outline.png', 'bulletDark2_outline.png']
-        self.image = pygame.transform.scale(load_image(random.choice(self.images), -1), (1, 1))
-        self.rect = self.image.get_rect()
-        self.image_bonus = load_image(random.choice(bs), -1)
-        self.rect.x = 0
-        self.rect.y = 0
+        global count
+        x = 768
+        y = 564
+        self.x = self.x2 = random.randrange(x)
+        self.y = self.y2 = random.randrange(y)
+        self.images = ['repair.jpg', 'boost.jpg', 'shield.jpg']
+        self.b = ['explosion00.png']
         self.time = 0
-        self.choosed_image = load_image(random.choice(self.images), -1)
+        self.a = choice((1, 2, 3))
+        self.image = pygame.transform.scale(load_image(self.images[self.a - 1]), (30, 30))
+        self.rect = self.image.get_rect()
+        self.rect.x = -30
+        self.rect.y = -30
+        count += 1
 
     def update(self):
+        global count
         self.time += 1
-        if self.time >= 210:
-            self.rect.x = x
-            self.rect.y = y
-            self.image = self.choosed_image
-        if pygame.sprite.spritecollideany(self, bullets):
-            self.image = self.image_bonus
+        # Ryslan: проверка на сталкивание спрайтов
         if pygame.sprite.spritecollideany(self, players):
-            pygame.sprite.spritecollideany(self, players).speed = 2
-            self.kill()
+            if self.a == 1:
+                if pygame.sprite.spritecollideany(self, players).health <= 100:
+                    pygame.sprite.spritecollideany(self, players).health += 20
+                    self.kill()
+                else:
+                    pygame.sprite.spritecollideany(self, players).health = 120
+                    self.kill()
+
+            elif self.a == 2:
+                pygame.sprite.spritecollideany(self, players).speed = 2
+                self.kill()
+
+            elif self.a == 3:
+                if pygame.sprite.spritecollideany(self, players).armor <= 60:
+                    pygame.sprite.spritecollideany(self, players).armor += 20
+                else:
+                    pygame.sprite.spritecollideany(self, players).armor = 80
+                self.kill()
+            count -= 1
+
+        # Ryslan: счетчик времени для спавна бонусов
+        if self.time >= 10:
+            self.rect.x = self.x
+            self.rect.y = self.y
+            self.time = 0
+
+
+# Ryslan: Старт игры
+class Start(pygame.sprite.Sprite):
+    def __init__(self):
+        self.FPS = 50
+        global bigflag
+        global digitalflag
+        intro_text = ["     "
+                      "     Салам", "",
+                      "     Правила игры : Не оставь от своего оппонента и мокрого места!",
+                      "     Игру создали :",
+                      "     К. Булат и Г. Руслан"]
+
+        fon = pygame.transform.scale(load_image('123.png'), (768, 630))
+        screen.blit(fon, (0, 0))
+        font = pygame.font.Font(None, 30)
+        text_coord = 50
+        for line in intro_text:
+            string_rendered = font.render(line, 1, (59, 49, 49))
+            intro_rect = string_rendered.get_rect()
+            text_coord += 10
+            intro_rect.top = text_coord
+            intro_rect.x = 10
+            text_coord += intro_rect.height
+            screen.blit(string_rendered, intro_rect)
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.terminate()
+                elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    bigflag = True
+                    digitalflag = 1
+                    return
+            pygame.display.flip()
+            clock.tick(self.FPS)
+
+    # Ryslan: выход в класс Out()
+    def terminate(self):
+        Out()
+
+
+# Ryslan: Выход из игры
+class Out(pygame.sprite.Sprite):
+    def __init__(self):
+        self.FPS = 50
+        global bigflag
+        global digitalflag
+        intro_text = ["     "
+                      "     ", "",
+                      "     ",
+                      "     ",
+                      "                                                          Пока"]
+
+        fon = pygame.transform.scale(load_image('1234.png'), (768, 630))
+        screen.blit(fon, (0, 0))
+        font = pygame.font.Font(None, 30)
+        text_coord = 50
+        for line in intro_text:
+            string_rendered = font.render(line, 1, (59, 49, 49))
+            intro_rect = string_rendered.get_rect()
+            text_coord += 10
+            intro_rect.top = text_coord
+            intro_rect.x = 10
+            text_coord += intro_rect.height
+            screen.blit(string_rendered, intro_rect)
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.terminate()
+                elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    self.terminate()
+                    return
+            pygame.display.flip()
+            clock.tick(self.FPS)
+
+    # Ryslan: выход из всего кода
+    def terminate(self):
+        pygame.quit()
+        sys.exit()
+
+
+# Ryslan: класс для картинки победы зеленого
+class Wingreen(pygame.sprite.Sprite):
+    def __init__(self):
+        self.FPS = 50
+        global bigflag
+        global digitalflag
+        intro_text = []
+        fon = pygame.transform.scale(load_image('Без имени-1.png'), (768, 630))
+        screen.blit(fon, (0, 0))
+        font = pygame.font.Font(None, 30)
+        text_coord = 50
+        for line in intro_text:
+            string_rendered = font.render(line, 1, pygame.Color('black'))
+            intro_rect = string_rendered.get_rect()
+            text_coord += 10
+            intro_rect.top = text_coord
+            intro_rect.x = 10
+            text_coord += intro_rect.height
+            screen.blit(string_rendered, intro_rect)
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.terminate()
+                elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    self.terminate()
+                    return
+            pygame.display.flip()
+            clock.tick(self.FPS)
+
+    # Ryslan: выход из всего кода
+    def terminate(self):
+        pygame.quit()
+        sys.exit()
+
+
+# Ryslan: класс для картинки победы желтого
+class Winyellow(pygame.sprite.Sprite):
+    def __init__(self):
+        self.FPS = 50
+        global bigflag
+        global digitalflag
+        intro_text = []
+        fon = pygame.transform.scale(load_image('Без имени-2.png'), (768, 630))
+        screen.blit(fon, (0, 0))
+        font = pygame.font.Font(None, 30)
+        text_coord = 50
+        for line in intro_text:
+            string_rendered = font.render(line, 1, pygame.Color('black'))
+            intro_rect = string_rendered.get_rect()
+            text_coord += 10
+            intro_rect.top = text_coord
+            intro_rect.x = 10
+            text_coord += intro_rect.height
+            screen.blit(string_rendered, intro_rect)
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.terminate()
+                elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    self.terminate()
+                    return
+            pygame.display.flip()
+            clock.tick(self.FPS)
+
+    # Ryslan: выход из всего кода
+    def terminate(self):
+        pygame.quit()
+        sys.exit()
+
+
+# Ryslan: конец игры если будет ничья
+class Gameover(pygame.sprite.Sprite):
+    def __init__(self):
+        self.FPS = 50
+        global bigflag
+        global digitalflag
+        intro_text = []
+        fon = pygame.transform.scale(load_image('gameover.png'), (768, 630))
+        screen.blit(fon, (0, 0))
+        font = pygame.font.Font(None, 30)
+        text_coord = 50
+        for line in intro_text:
+            string_rendered = font.render(line, 1, pygame.Color('black'))
+            intro_rect = string_rendered.get_rect()
+            text_coord += 10
+            intro_rect.top = text_coord
+            intro_rect.x = 10
+            text_coord += intro_rect.height
+            screen.blit(string_rendered, intro_rect)
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.terminate()
+                elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    self.terminate()
+                    return
+            pygame.display.flip()
+            clock.tick(self.FPS)
+
+    # Ryslan: выход из всего кода
+    def terminate(self):
+        pygame.quit()
+        sys.exit()
 
 
 # Bulat: изображения для составления поля
@@ -393,231 +648,256 @@ player_sand.direction = east
 
 players.add(player_green, player_sand)
 
+ui.add(UI(pygame.transform.scale(load_image('heart.png', -1), (47, 43)), 5, 10, 'Heart', player_green))
+ui.add(UI(pygame.transform.scale(load_image('heart.png', -1), (47, 43)), 690, 10, 'Heart', player_sand))
+
 # Bulat: главный цикл игры
 running = True
 while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-        elif event.type == pygame.KEYDOWN:
-            # Bulat: вверх
-            if event.key == pygame.K_w:
-                player_green.moving_down = False
-                player_green.moving_left = False
-                player_green.moving_right = False
-
-                player_green.rotation(player_green.direction - north)
-                player_green.direction = north
-                player_green.moving_top = True
-
-            # Bulat: вниз
-            if event.key == pygame.K_s:
-                player_green.moving_up = False
-                player_green.moving_left = False
-                player_green.moving_right = False
-
-                player_green.rotation(player_green.direction - south)
-                player_green.direction = south
-                player_green.moving_down = True
-
-            # Bulat: вправо
-            if event.key == pygame.K_d:
-                player_green.moving_down = False
-                player_green.moving_left = False
-                player_green.moving_top = False
-
-                player_green.rotation(player_green.direction - west)
-                player_green.direction = west
-                player_green.moving_right = True
-
-            # Bulat: влево
-            if event.key == pygame.K_a:
-
-                player_green.moving_down = False
-                player_green.moving_top = False
-                player_green.moving_right = False
-
-                player_green.rotation(player_green.direction - east)
-                player_green.direction = east
-                player_green.moving_left = True
-
-            # Bulat: выстрел
-            elif event.key == pygame.K_SPACE and player_green.can_shoot:
-                # Bulat: изображения для эффекта
-                images = [load_image('Flash_A_01.png', -1), load_image('Flash_A_02.png', -1),
-                          load_image('Flash_A_03.png', -1),
-                          load_image('Flash_A_04.png', -1), load_image('Flash_A_05.png', -1)]
-                if player_green.direction == south:
-                    green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x + 18,
-                                     player_green.rect.y + 46)
-                    img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
-                    shot = Particle(img, player_green.rect.x - 3, player_green.rect.y + 34,
-                                    player_green, 'shot')
-                    shot.images = images
-                    particles.add(shot)
-
-                elif player_green.direction == north:
-                    green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x + 18,
-                                     player_green.rect.y - 23)
-                    img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
-                    shot = Particle(img, player_green.rect.x - 4, player_green.rect.y - 40,
-                                    player_green, 'shot')
-                    shot.images = images
-                    particles.add(shot)
-
-                elif player_green.direction == east:
-                    green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x - 23,
-                                     player_green.rect.y + 18)
-                    green_b.rotation(-90)
-                    img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
-                    shot = Particle(img, player_green.rect.x - 38, player_green.rect.y,
-                                    player_green, 'shot')
-                    shot.images = images
-                    particles.add(shot)
-
-                elif player_green.direction == west:
-                    green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x + 42,
-                                     player_green.rect.y + 18)
-                    green_b.rotation(90)
-                    img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
-                    shot = Particle(img, player_green.rect.x + 42, player_green.rect.y + 18,
-                                    player_green, 'shot')
-                    shot.images = images
-                    particles.add(shot)
-                player_green.can_shoot = False
-                player_green.reloading = True
-                green_b.direction = player_green.direction
-                bullets.add(green_b)
-
-            # второй игрок
-
+    # Ryslan:  Запускает начальную картинку
+    if digitalflag != 1:
+        Start()
+    # Ryslan: запускает главный цикл
+    elif digitalflag == 1 and bigflag:
+        for event in pygame.event.get():
+            # Ryslan: смотрит на нажатие выхода из игры
+            if event.type == pygame.QUIT:
+                Out()
+                running = False
+            # Ryslan: вызывает класс Gameover() если будет ничья
+            elif sand_lives == 0 and green_lives == 0:
+                Gameover()
+                running = False
+            # Ryslan: вызывает класс Winyellow()  если победил желтый
+            elif green_lives <= 0:
+                Winyellow()
+                running = False
+            # Ryslan: вызывает класс Wingreen() если победит зеленый
+            elif sand_lives <= 0:
+                Wingreen()
+                running = False
+            # Ryslan: спавн бонусов
+            elif event.type == pygame.USEREVENT and count <= 3:
+                particles.add(Bonus())
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    player_sand.moving_down = False
-                    player_sand.moving_left = False
-                    player_sand.moving_right = False
+                # Bulat: вверх
+                if event.key == pygame.K_w:
+                    player_green.moving_down = False
+                    player_green.moving_left = False
+                    player_green.moving_right = False
 
-                    player_sand.rotation(player_sand.direction - north)
-                    player_sand.direction = north
-                    player_sand.moving_top = True
+                    player_green.rotation(player_green.direction - north)
+                    player_green.direction = north
+                    player_green.moving_top = True
 
-                if event.key == pygame.K_DOWN:
-                    player_sand.moving_up = False
-                    player_sand.moving_left = False
-                    player_sand.moving_right = False
+                # Bulat: вниз
+                if event.key == pygame.K_s:
+                    player_green.moving_up = False
+                    player_green.moving_left = False
+                    player_green.moving_right = False
 
-                    player_sand.rotation(player_sand.direction - south)
-                    player_sand.direction = south
-                    player_sand.moving_down = True
+                    player_green.rotation(player_green.direction - south)
+                    player_green.direction = south
+                    player_green.moving_down = True
 
-                if event.key == pygame.K_RIGHT:
-                    player_sand.moving_down = False
-                    player_sand.moving_left = False
-                    player_sand.moving_top = False
+                # Bulat: вправо
+                if event.key == pygame.K_d:
+                    player_green.moving_down = False
+                    player_green.moving_left = False
+                    player_green.moving_top = False
 
-                    player_sand.rotation(player_sand.direction - west)
-                    player_sand.direction = west
-                    player_sand.moving_right = True
+                    player_green.rotation(player_green.direction - west)
+                    player_green.direction = west
+                    player_green.moving_right = True
 
-                if event.key == pygame.K_LEFT:
+                # Bulat: влево
+                if event.key == pygame.K_a:
 
-                    player_sand.moving_down = False
-                    player_sand.moving_top = False
-                    player_sand.moving_right = False
+                    player_green.moving_down = False
+                    player_green.moving_top = False
+                    player_green.moving_right = False
 
-                    player_sand.rotation(player_sand.direction - east)
-                    player_sand.direction = east
-                    player_sand.moving_left = True
+                    player_green.rotation(player_green.direction - east)
+                    player_green.direction = east
+                    player_green.moving_left = True
 
-                elif event.key == pygame.K_RCTRL and player_sand.can_shoot:
+                # Bulat: выстрел
+                elif event.key == pygame.K_SPACE and player_green.can_shoot:
+                    # Bulat: изображения для эффекта
                     images = [load_image('Flash_A_01.png', -1), load_image('Flash_A_02.png', -1),
                               load_image('Flash_A_03.png', -1),
                               load_image('Flash_A_04.png', -1), load_image('Flash_A_05.png', -1)]
-                    if player_sand.direction == south:
-                        sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 18,
-                                        player_sand.rect.y + 46)
-
+                    if player_green.direction == south:
+                        green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x + 18,
+                                         player_green.rect.y + 46)
                         img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
-                        shot = Particle(img, player_sand.rect.x - 3, player_sand.rect.y + 34,
-                                        player_sand, 'shot')
+                        shot = Particle(img, player_green.rect.x - 3, player_green.rect.y + 34,
+                                        player_green, 'shot')
                         shot.images = images
                         particles.add(shot)
 
-                    elif player_sand.direction == north:
-                        sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 18,
-                                        player_sand.rect.y - 23)
+                    elif player_green.direction == north:
+                        green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x + 18,
+                                         player_green.rect.y - 23)
                         img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
-                        shot = Particle(img, player_sand.rect.x - 4, player_sand.rect.y - 40,
-                                        player_sand, 'shot')
+                        shot = Particle(img, player_green.rect.x - 4, player_green.rect.y - 40,
+                                        player_green, 'shot')
                         shot.images = images
                         particles.add(shot)
 
-                    elif player_sand.direction == east:
-                        sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x - 23,
-                                        player_sand.rect.y + 18)
-                        sand_b.rotation(-90)
+                    elif player_green.direction == east:
+                        green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x - 23,
+                                         player_green.rect.y + 18)
+                        green_b.rotation(-90)
                         img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
-                        shot = Particle(img, player_sand.rect.x - 38, player_sand.rect.y,
-                                        player_sand, 'shot')
+                        shot = Particle(img, player_green.rect.x - 38, player_green.rect.y,
+                                        player_green, 'shot')
                         shot.images = images
                         particles.add(shot)
 
-                    elif player_sand.direction == west:
-                        sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 42,
-                                        player_sand.rect.y + 18)
-                        sand_b.rotation(90)
+                    elif player_green.direction == west:
+                        green_b = Bullet(load_image('bulletGreen3_outline.png', -1), player_green.rect.x + 42,
+                                         player_green.rect.y + 18)
+                        green_b.rotation(90)
                         img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
-                        shot = Particle(img, player_sand.rect.x + 42, player_sand.rect.y + 18,
-                                        player_sand, 'shot')
+                        shot = Particle(img, player_green.rect.x + 42, player_green.rect.y + 18,
+                                        player_green, 'shot')
                         shot.images = images
                         particles.add(shot)
+                    player_green.can_shoot = False
+                    player_green.reloading = True
+                    green_b.direction = player_green.direction
+                    bullets.add(green_b)
 
-                    player_sand.can_shoot = False
-                    player_sand.reloading = True
-                    sand_b.direction = player_sand.direction
-                    bullets.add(sand_b)
+                # второй игрок
 
-        elif event.type == pygame.KEYUP:
-            if event.key == pygame.K_w:
-                player_green.moving_top = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_UP:
+                        player_sand.moving_down = False
+                        player_sand.moving_left = False
+                        player_sand.moving_right = False
 
-            elif event.key == pygame.K_s:
-                player_green.moving_down = False
+                        player_sand.rotation(player_sand.direction - north)
+                        player_sand.direction = north
+                        player_sand.moving_top = True
 
-            elif event.key == pygame.K_d:
-                player_green.moving_right = False
+                    if event.key == pygame.K_DOWN:
+                        player_sand.moving_up = False
+                        player_sand.moving_left = False
+                        player_sand.moving_right = False
 
-            elif event.key == pygame.K_a:
-                player_green.moving_left = False
+                        player_sand.rotation(player_sand.direction - south)
+                        player_sand.direction = south
+                        player_sand.moving_down = True
 
-            # игрок 2
+                    if event.key == pygame.K_RIGHT:
+                        player_sand.moving_down = False
+                        player_sand.moving_left = False
+                        player_sand.moving_top = False
 
-            if event.key == pygame.K_UP:
-                player_sand.moving_top = False
+                        player_sand.rotation(player_sand.direction - west)
+                        player_sand.direction = west
+                        player_sand.moving_right = True
 
-            elif event.key == pygame.K_DOWN:
-                player_sand.moving_down = False
+                    if event.key == pygame.K_LEFT:
 
-            elif event.key == pygame.K_RIGHT:
-                player_sand.moving_right = False
+                        player_sand.moving_down = False
+                        player_sand.moving_top = False
+                        player_sand.moving_right = False
 
-            elif event.key == pygame.K_LEFT:
-                player_sand.moving_left = False
+                        player_sand.rotation(player_sand.direction - east)
+                        player_sand.direction = east
+                        player_sand.moving_left = True
+
+                    elif event.key == pygame.K_RCTRL and player_sand.can_shoot:
+                        images = [load_image('Flash_A_01.png', -1), load_image('Flash_A_02.png', -1),
+                                  load_image('Flash_A_03.png', -1),
+                                  load_image('Flash_A_04.png', -1), load_image('Flash_A_05.png', -1)]
+                        if player_sand.direction == south:
+                            sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 18,
+                                            player_sand.rect.y + 46)
+
+                            img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
+                            shot = Particle(img, player_sand.rect.x - 3, player_sand.rect.y + 34,
+                                            player_sand, 'shot')
+                            shot.images = images
+                            particles.add(shot)
+
+                        elif player_sand.direction == north:
+                            sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 18,
+                                            player_sand.rect.y - 23)
+                            img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
+                            shot = Particle(img, player_sand.rect.x - 4, player_sand.rect.y - 40,
+                                            player_sand, 'shot')
+                            shot.images = images
+                            particles.add(shot)
+
+                        elif player_sand.direction == east:
+                            sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x - 23,
+                                            player_sand.rect.y + 18)
+                            sand_b.rotation(-90)
+                            img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
+                            shot = Particle(img, player_sand.rect.x - 38, player_sand.rect.y,
+                                            player_sand, 'shot')
+                            shot.images = images
+                            particles.add(shot)
+
+                        elif player_sand.direction == west:
+                            sand_b = Bullet(load_image('bulletSand3_outline.png', -1), player_sand.rect.x + 42,
+                                            player_sand.rect.y + 18)
+                            sand_b.rotation(90)
+                            img = pygame.transform.scale(load_image('Flash_A_01.png', -1), (50, 50))
+                            shot = Particle(img, player_sand.rect.x + 42, player_sand.rect.y + 18,
+                                            player_sand, 'shot')
+                            shot.images = images
+                            particles.add(shot)
+
+                        player_sand.can_shoot = False
+                        player_sand.reloading = True
+                        sand_b.direction = player_sand.direction
+                        bullets.add(sand_b)
+
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_w:
+                    player_green.moving_top = False
+
+                elif event.key == pygame.K_s:
+                    player_green.moving_down = False
+
+                elif event.key == pygame.K_d:
+                    player_green.moving_right = False
+
+                elif event.key == pygame.K_a:
+                    player_green.moving_left = False
+
+                # игрок 2
+
+                if event.key == pygame.K_UP:
+                    player_sand.moving_top = False
+
+                elif event.key == pygame.K_DOWN:
+                    player_sand.moving_down = False
+
+                elif event.key == pygame.K_RIGHT:
+                    player_sand.moving_right = False
+
+                elif event.key == pygame.K_LEFT:
+                    player_sand.moving_left = False
 
     # Bulat: отрисовка всех групп спрайтов
     tiles.draw(screen)
     tiles.update()
-    players.draw(screen)
-    players.update()
     objects.draw(screen)
     objects.update()
+    players.draw(screen)
+    players.update()
     bullets.draw(screen)
     bullets.update()
     particles.draw(screen)
     particles.update()
     ui.draw(screen)
     ui.update()
+    update_lives(green_lives, sand_lives, screen)
 
     # Bulat:  возрождение уничтоженного игрока/игроков
     if destroyed_player:
@@ -643,9 +923,10 @@ while running:
                 respawn_sand_tick = 0
                 ui.add(UI(load_image('HPBarIn.png', -1), 390, 577, 'HPBar', player_sand))
                 ui.add(UI(pygame.transform.scale(load_image('ArmorBar.png'), (377, 14)), 390, 560,
-                          'ArmorBar', player_green))
+                          'ArmorBar', player_sand))
 
     pygame.display.flip()
     clock.tick(60)
 
+ui.empty()
 pygame.quit()
