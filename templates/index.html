@@ -1,0 +1,29 @@
+﻿{% extends "base.html" %}
+
+{% block content %}
+<h1 class="font-weight-light">Новые статьи</h1>
+<div class="container">
+    <input class=" form-control w-25" id="search" name="search" type="text" data-toggle="hideseek" placeholder="Поиск.." data-list=".list">
+    <ul class="list list-group">
+    {% for item in news%}
+
+    {% set PrimaryId = '#' + item.title[0] + item.user.name[0] + item.content[0] + item.title[-1] %}
+    {% set Id = item.title[0] + item.user.name[0] + item.content[0] + item.title[-1] %}
+
+    <li style="list-style-type: none;"><div class="container col-md6 border rounded shadow p-4 mb-4 bg-white" style="margin-top: 20px;background-color: #fffff;">
+
+                                                         
+        <h2>{{item.title}}</h2>
+        <p>{{item.description}}</p>
+        <button type="button" class="btn btn-primary" data-toggle="collapse" data-target="{{PrimaryId}}">Читать дальше..</button>
+        <div id="{{Id}}" class="collapse">
+            {{item.content}}
+        </div>
+        <div>Автор - {{item.user.name}} Дата создания - {{item.created_date}}</div>
+    </div></li>
+
+    {% endfor %}
+    </ul>
+</div>
+
+{% endblock %}
